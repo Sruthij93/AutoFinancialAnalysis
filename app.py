@@ -36,11 +36,17 @@ def format_matches(top_matches):
         ticker_details.append({
             'ticker': match['metadata']['Ticker'],
             'name': match['metadata']['Name'],
+            'business_summary':match['metadata']['Business Summary'],
+            'website':match['metadata']['Website'],
+            'revenue_growth':match['metadata']['Revenue Growth'],
+            'gross_margins':match['metadata']['Gross Margins'],
+            'target_m_price':match['metadata']['Target Mean Price'],
+            'current_price':match['metadata']['Current Price'],
+            '52weekchange': match['metadata']['52 Week Change'],
             'sector': match['metadata']['Sector'],
             'market_cap': match['metadata']['Market Cap'],
-            '52weekchange': match['metadata']['52 Week Change'],
+            'volume': match['metadata']['Volume'],
             'recommendation_key': match['metadata']['Recommendation Key'],
-            'business_summary':match['metadata']['Business Summary'],
             'text':match['metadata']['text']
         })
     return ticker_details
@@ -67,14 +73,16 @@ def perform_rag(query):
 
     # apply filter to the metadata
     filter= {"$and": [
-        {"52weekchange": {"$gt": 0}}, 
-        {"recommendation_key": {"$in": ["buy", "hold"] }}
+        {"52 Week Change": {"$gt": 0}}, 
+        {"Recommendation Key": {"$in": ["buy", "strong buy", "hold"] }},
         ]
     }
         
     # find the top matches
-    top_matches = pinecone_index.query(vector=raw_query_embedding.tolist(), top_k = 20, filter = filter, include_metadata=True, namespace=namespace)
+    top_matches = pinecone_index.query(vector=raw_query_embedding.tolist(), filter = filter, top_k = 10, include_metadata=True, namespace=namespace)
     top_matches_formatted = format_matches(top_matches)
+
+    print(top_matches)
 
     augmented_query = augment_query_context(query, top_matches_formatted)
 
@@ -91,7 +99,7 @@ def perform_rag(query):
     )
 
     response = llm_response.choices[0].message.content
-    return response
+    return top_matches_formatted, response
 
 
 # Main UI
@@ -102,7 +110,74 @@ user_query = st.text_area(
     )
 
 if(st.button("Find Stocks")):
-    st.write(perform_rag(user_query))
+    top_matches, results = perform_rag(user_query)
+    # st.write(top_matches)
+    with st.container():
+        if top_matches:
+            cols_main = st.columns(2)
+            with cols_main[0]:
+                for match in top_matches[: 3]:
+                    with st.container(border = True, height=300):
+                        st.markdown(f"#### {match['name']} ({match['ticker']})")
+                        # st.markdown(match['business_summary'])
+                        st.markdown(f"Website: {match['website']}", unsafe_allow_html=True)
+
+                        cols = st.columns(3)
+
+                        with cols[0]:
+                            st.markdown("**Revenue Growth**")
+                            st.markdown(match['revenue_growth'])
+                            st.markdown("**Gross Margins**")
+                            st.markdown(match['gross_margins'])
+
+
+                        with cols[1]:
+                            st.markdown("**Target Mean Price**")    
+                            st.markdown(match['target_m_price'])
+                            st.markdown("**Current Price**")
+                            st.markdown(match["current_price"])
+
+                        with cols[2]:
+                            st.markdown("**Target Mean Price**")    
+                            st.markdown(match['target_m_price'])
+                            st.markdown("**Current Price**")
+                            st.markdown(match["current_price"])
+
+            with cols_main[1]:
+                for match in top_matches[3:6]:
+                    with st.container(border = True, height=300):
+                        st.markdown(f"#### {match['name']} ({match['ticker']})")
+                        # st.markdown(match['business_summary'])
+                        st.markdown(f"Website: {match['website']}", unsafe_allow_html=True)
+
+                        cols = st.columns(3)
+
+                        with cols[0]:
+                            st.markdown("**Revenue Growth**")
+                            st.markdown(match['revenue_growth'])
+                            st.markdown("**Gross Margins**")
+                            st.markdown(match['gross_margins'])
+
+
+                        with cols[1]:
+                            st.markdown("**Target Mean Price**")    
+                            st.markdown(match['target_m_price'])
+                            st.markdown("**Current Price**")
+                            st.markdown(match["current_price"])
+
+                        with cols[2]:
+                            st.markdown("**Target Mean Price**")    
+                            st.markdown(match['target_m_price'])
+                            st.markdown("**Current Price**")
+                            st.markdown(match["current_price"])
+        else:
+            st.write("No stocks found. Please refine your query.")
+
+        st.divider()
+
+        st.write("## Results")    
+
+        st.write(results)    
 
 
 
