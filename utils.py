@@ -15,3 +15,11 @@ def format_large_number(num):
 def format_colored_number(value):
     color = "green" if value >= 0 else "red"  # Choose green for positive, red for negative
     return f'<div style="color:{color}; font-size:20px; font-weight:bold;">{value * 100:.1f}%</div>'  # Format number to 2 decimal places
+
+def safe_format(value):
+        # Handle invalid or missing values
+        if isinstance(value, (int, float)):
+            return f"{value * 100:.1f}%"
+        else:
+            return "N/A"
+       
