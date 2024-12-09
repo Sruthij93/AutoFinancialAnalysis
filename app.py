@@ -62,29 +62,27 @@ def get_huggingface_embeddings(text, model_name="sentence-transformers/all-mpnet
 def augment_query_context(query,  top_matches_formatted):
     context = '<CONTEXT>\n'
     for ticker in top_matches_formatted:
-        context += f"\n\n--------\n\n {ticker['text']}\n"
-
+        context += f"\n\n--------\n\n {ticker['text']}\n Sector is {ticker['sector']}. \n Market Cap is {ticker['market_cap']}. \n Volume is {ticker['volume']}."
+    print(context)
     augmented_query = f"{context} \nMY QUESTION:\n {query}"
     return augmented_query
 
 # Perform rag
 def perform_rag(query, user_filters):
-
     # embed the query
     raw_query_embedding = get_huggingface_embeddings(query)
 
     # apply filter to the metadata
     if user_filters:
-         market_cap_min = user_filters['Market Cap min'] * 1_000_000_000
-         market_cap_max = user_filters['Market Cap max'] * 1_000_000_000
-         volume_min = user_filters['Volume min'] * 1_000_000
-         volume_max = user_filters['Volume max'] * 1_000_000
+        
+         market_cap= user_filters['Market Cap']
+         volume = user_filters['Volume']
          recommendation_keys = user_filters['Recommendation Keys']
-
+        
          filter= {"$and": [
-            {"Market Cap": {"$gte": market_cap_min, "$lte": market_cap_max}},
-            {"Volume": {"$gte": volume_min, "$lte": volume_max}},
-            {"52 Week Change": {"$gte": -0.1}},
+            {"Market Cap": {"$gte": market_cap}},
+            {"Volume": {"$gte": volume}},
+            {"52 Week Change": {"$gte": -0.2}},
             {"Recommendation Key": {"$in": recommendation_keys }}
          ]}
     else:      
@@ -94,7 +92,7 @@ def perform_rag(query, user_filters):
             ]
         }
 
-    print("filter: ", filter)    
+    # print("filter: ", filter)    
         
     # find the top matches
     top_matches = pinecone_index.query(vector=raw_query_embedding.tolist(), filter = filter, top_k = 12, include_metadata=True, namespace=namespace)
@@ -105,16 +103,28 @@ def perform_rag(query, user_filters):
     augmented_query = augment_query_context(query, top_matches_formatted)
 
 
-    system_prompt = """You are an expert at providing answers about stocks. If ticker symbols are mentioned, give more info about that stock. Please answer my question provided.
+    system_prompt = """You are a financial expert at providing answers about stocks. Please answer my question provided.
+            Analyze the stocks' in detail and explain current performance and potential future trends.
+            Identify any notable connections or relationships with other stocks (e.g., industry, market correlation, or shared factors).
+            Provide a concise, actionable insight to guide investment decisions.
     """
+    try:
+        llm_response = client.chat.completions.create(
+            model = 'llama-3.1-70b-versatile',
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": augmented_query}
+            ]
+        )
+    except:
+        llm_response = client.chat.completions.create(
+                model = 'llama-3.1-8b-instant',
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": augmented_query}
+                ]
+            )
 
-    llm_response = client.chat.completions.create(
-        model = 'llama-3.1-70b-versatile',
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": augmented_query}
-        ]
-    )
 
     response = llm_response.choices[0].message.content
     return top_matches_formatted, response
@@ -129,9 +139,9 @@ def render_stock_block(stock):
                 cols = st.columns(3)
                 with cols[0]:
                     st.markdown("""<div class='small-font'>Revenue Growth</div>""", unsafe_allow_html=True)
-                    st.markdown(f"""<div class='number-font'>{stock['revenue_growth']* 100:.1f}%</div>""", unsafe_allow_html=True)
+                    st.markdown(f"""<div class='number-font'>{ut.safe_format(stock['revenue_growth'])}</div>""", unsafe_allow_html=True)
                     st.markdown("""<div class='small-font'>Gross Margins</div>""", unsafe_allow_html=True)
-                    st.markdown(f"""<div class='number-font'>{stock['gross_margins'] * 100:.1f}%</div>""", unsafe_allow_html=True)
+                    st.markdown(f"""<div class='number-font'>{ut.safe_format(stock['gross_margins'])}</div>""", unsafe_allow_html=True)
 
                 with cols[1]:
                     st.markdown("""<div class='small-font'>Market Cap</div>""", unsafe_allow_html=True)
@@ -151,7 +161,8 @@ def render_stock_block(stock):
                     st.markdown(f"""<div class='number-font'>{weekchange}</div>""", unsafe_allow_html=True)
 
 # Main UI
-st.title("📉 Automated Stock Analysis")
+st.title("📉 StockLit")
+st.caption("Get Automated Stock Analysis done right here!")
 user_query = st.text_area(
         "Enter a description for the kind of stocks you are looking for:",
         placeholder ="Type here"
@@ -159,23 +170,21 @@ user_query = st.text_area(
 
 with st.expander("Apply filters"):
         # Market Cap Range
-        market_cap_range = st.slider(
-            "Market Cap (in billions):",
-            min_value=0,
-            max_value=1000,  
-            value=(0, 1000),
-            step=10,
-            format="$%dB"
+        market_cap = st.number_input(
+             "Market Cap",
+             min_value=0,
+             max_value=10000000000000,
+             value= 1000000,
+             step = 1000
         )
 
         # Volume Range
-        volume_range = st.slider(
-            "Volume (in millions):",
+        volume = st.number_input(
+            "Volume",
             min_value=0,
-            max_value=1000,  
-            value=(0, 1000), 
-            step=10,
-            format="$%dM"
+            max_value=1000000000,  
+            value=10000, 
+            step=100
         )
 
         # Recommendation Key
@@ -186,16 +195,13 @@ with st.expander("Apply filters"):
             ["strong buy", "buy", "hold"]
         )
 
-        # print(selected_recommendation_keys)
-        # print(type(selected_recommendation_keys))
 
         user_filters = {
-             "Market Cap min" : market_cap_range[0],
-             "Market Cap max" : market_cap_range[1],
-             "Volume min" : volume_range[0],
-             "Volume max" : volume_range[1],
+             "Market Cap" : market_cap,
+             "Volume": volume,
              "Recommendation Keys" : selected_recommendation_keys
         }
+
 
 
 if(st.button("Find Stocks")):
@@ -218,7 +224,7 @@ if(st.button("Find Stocks")):
 
         st.divider()
 
-        st.write("## More information")    
+        st.write("## Analysis")    
 
         st.write(results)    
 
