@@ -1,4 +1,4 @@
-# # 🧑‍💻 **Automated Financial Analysis: StockLit**
+# 🧑‍💻 **Automated Financial Analysis: StockLit**
 
 This project is an interactive Stock Financial Analysis Application that allows users to query a Pinecone-powered vector database containing detailed stock information. Users can apply filters such as market cap, volume, and recommendation keys to identify stocks matching their criteria. The app utilizes advanced embeddings and retrieval-augmented generation (RAG) to provide detailed responses.
 
